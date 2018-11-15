@@ -107,7 +107,7 @@ class AccessoryDetectionTableViewController: UITableViewController {
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         
         selectedAccessory = accessoryList?[indexPath.row]
-        sessionController.setupController(forAccessory: selectedAccessory!, withProtocolString: (selectedAccessory?.protocolStrings[0])!)
+        sessionController.setupController(forAccessory: selectedAccessory!)
         performSegue(withIdentifier: "showAccessoryConfigurationTerminals", sender: nil)
         tableView.deselectRow(at: indexPath, animated: true)
     }

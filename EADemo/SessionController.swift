@@ -6,7 +6,7 @@
 //  Licence MIT
 //
 
-import UIKit
+import Foundation
 import ExternalAccessory
 
 class SessionController: NSObject, EAAccessoryDelegate, StreamDelegate {
@@ -19,10 +19,28 @@ class SessionController: NSObject, EAAccessoryDelegate, StreamDelegate {
     var _readData: NSMutableData?
     var _dataAsString: String?
     var _dataAsHexString: String?
+
+    override init() {
+        super.init()
+        let accessoryList = EAAccessoryManager.shared().connectedAccessories
+        if let accessory = accessoryList.first {
+            setupController(forAccessory: accessory)
+        }
+        NotificationCenter.default.addObserver(self, selector: #selector(accessoryDidConnect), name: NSNotification.Name.EAAccessoryDidConnect, object: nil)
+    }
+    
+    func accessoryDidConnect(notificaton: NSNotification) {
+        if let accessory = notificaton.userInfo![EAAccessoryKey] as? EAAccessory {
+            setupController(forAccessory: accessory)
+        }
+    }
     
     // MARK: Controller Setup
     
-    func setupController(forAccessory accessory: EAAccessory, withProtocolString protocolString: String) {
+    func setupController(forAccessory accessory: EAAccessory) {
+        guard let protocolString = accessory.protocolStrings.first else {
+            return
+        }
         _accessory = accessory
         _protocolString = protocolString
     }
@@ -90,27 +108,32 @@ class SessionController: NSObject, EAAccessoryDelegate, StreamDelegate {
         return (_readData?.length)!
     }
     
+    var totalBytesRead = 0
     // MARK: - Helpers
     func updateReadData() {
         let bufferSize = 128
         var buffer = [UInt8](repeating: 0, count: bufferSize)
         
         while _session?.inputStream?.hasBytesAvailable == true {
-            let bytesRead = _session?.inputStream?.read(&buffer, maxLength: bufferSize)
-            if _readData == nil {
-                _readData = NSMutableData()
+            if let bytesRead = _session?.inputStream?.read(&buffer, maxLength: bufferSize) {
+                if _readData == nil {
+                    _readData = NSMutableData()
+                }
+                _readData?.append(buffer, length: bytesRead)
+                _dataAsString = NSString(bytes: buffer, length: bytesRead, encoding: String.Encoding.utf8.rawValue) as String?
+    //            _dataAsHexString = NSString(bytes: buffer, length: bytesRead!, encoding: String.Encoding.RawValue)
+                _dataAsHexString = _dataAsString?.hexadecimalString()
+                totalBytesRead += bytesRead
             }
-            _readData?.append(buffer, length: bytesRead!)
-            _dataAsString = NSString(bytes: buffer, length: bytesRead!, encoding: String.Encoding.utf8.rawValue) as String?
-//            _dataAsHexString = NSString(bytes: buffer, length: bytesRead!, encoding: String.Encoding.RawValue)
-            _dataAsHexString = _dataAsString?.hexadecimalString()
+        }
+        if totalBytesRead >= 56 {
+            print("button pressed with \(totalBytesRead)B")
+            totalBytesRead = 0
             NotificationCenter.default.post(name: NSNotification.Name(rawValue: "BESessionDataReceivedNotification"), object: nil)
         }
     }
     
     private func writeData() {
-        
-        
         while (_session?.outputStream?.hasSpaceAvailable)! == true && _writeData != nil && (_writeData?.length)! > 0 {
             var buffer = [UInt8](repeating: 0, count: _writeData!.length)
             _writeData?.getBytes(&buffer, length: (_writeData?.length)!)
@@ -128,6 +151,8 @@ class SessionController: NSObject, EAAccessoryDelegate, StreamDelegate {
     
     func accessoryDidDisconnect(_ accessory: EAAccessory) {
         // Accessory diconnected from iOS, updating accordingly
+        closeSession()
+        _accessory = nil
     }
     
     // MARK: - NSStreamDelegateEventExtensions
